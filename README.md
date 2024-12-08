@@ -4,5 +4,5 @@
  - Allows for Zooming and Panning on the graph
  - Allows for saving images of the graph
  - Provides toggles for axis zoom locking
- - Uses an AppData backed json file for saving and loading bookmarks
+ - Uses an AppData backed json file for saving and loading a bookmark
  - Loads a json set of States and Unemployment Data over the past half century
