@@ -1,0 +1,28 @@
+﻿<div class="top-row ps-3 navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="">ChartDemo</a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
+            </NavLink>
+        </div>
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="chart">
+                <MudIcon Icon="@Icons.Material.Filled.Insights" Title="Chart"/>
+                <span class="px-3">Chart</span>
+            </NavLink>
+        </div>
+    </nav>
+
+
+    <div style="color: #F0EAD6;position:absolute;bottom:2em;left:2em;font-style:italic;">
+        <MudText Typo="Typo.h6">By Travis Johansen</MudText>
+    </div>
+</div>

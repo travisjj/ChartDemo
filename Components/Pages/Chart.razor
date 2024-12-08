@@ -1,0 +1,262 @@
+﻿@page "/chart"
+
+@using Microsoft.JSInterop
+@using ChartDemo.ViewModels
+@using ChartDemo.Models
+@using System.IO;
+
+@* Making the JavaScript runtime, ViewModel, and Snackbar available *@
+@inject IJSRuntime JS
+@inject ChartDataVM ViewModel
+@inject ISnackbar Snackbar
+
+<div id="loader">
+    @LoadingMessage
+</div>
+<MudStack Row="true" AlignItems="AlignItems.Center">
+    <MudCheckBox @bind-Value="ZoomX" Label="Zoom X-Axis" Color="Color.Primary"></MudCheckBox>
+    <MudCheckBox @bind-Value="ZoomY" Label="Zoom Y-Axis" Color="Color.Primary"></MudCheckBox>
+</MudStack>
+<br style="margin-bottom:2em;" />
+
+<canvas id="@Id"></canvas>
+
+<br style="margin-bottom:2em;" />
+
+<MudStack Spacing="2">
+    <MudSelect T="string" Label="Select up to 7 States or Cities" MultiSelection="true" @bind-value="currentValue" @bind-SelectedValues="selectedValues">
+        @foreach (var option in Items)
+        {
+            <MudSelectItem Value="@option">
+                <MudText Color="Color.Default">
+                    @option
+                </MudText>
+            </MudSelectItem>
+        }
+    </MudSelect>
+</MudStack>
+
+<MudStack Row="true" AlignItems="AlignItems.Center" Style="position:absolute;bottom:2em;width:90%">
+    <MudButton Variant="Variant.Filled" EndIcon="@Icons.Material.Filled.Draw" Color="Color.Primary" @onclick="UpdateChartAsync">Draw</MudButton>
+    <MudMenu Icon="@Icons.Material.Filled.Settings"
+             Color="Color.Primary"
+             AriaLabel="Open user menu">
+        <MudMenuItem IconSize="Size.Medium" IconColor="Color.Primary" Icon="@Icons.Material.Filled.ResetTv" @onclick="ResetZoomAsync">Reset Zoom</MudMenuItem>
+        <MudMenuItem IconSize="Size.Medium" IconColor="Color.Primary" Icon="@Icons.Material.Filled.BookmarkAdd" @onclick="SaveBookmarkAsync">Save Bookmark</MudMenuItem>
+        <MudMenuItem IconSize="Size.Medium" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Bookmark" @onclick="LoadBookmarkAsync">Load Bookmark</MudMenuItem>
+        <MudMenuItem IconSize="Size.Medium" IconColor="Color.Primary" Icon="@Icons.Material.Filled.Save" @onclick="SaveChartAsImageAsync">Save as Image</MudMenuItem>
+    </MudMenu>
+</MudStack>
+
+
+@code {
+    // Flag to toggle x-axis zooming for the chart
+    private bool _zoomX = true;
+    public bool ZoomX {
+        get { return _zoomX; } 
+        set{
+            _zoomX = value;
+            SetZoomModeAsync();
+        }
+    }
+
+    // Flag to toggle y-axis zooming for the chart
+    private bool _zoomY = true;
+    public bool ZoomY
+    {
+        get { return _zoomY; }
+        set
+        {
+            _zoomY = value;
+            SetZoomModeAsync();
+        }
+    }
+
+    // Flag to indicate whether the chart is currently active
+    bool ChartActive = false;
+
+    // Stores the selected names for chart rendering
+    private string[]? SelectedNames;
+
+    // Default value displayed while data is loading
+    private string currentValue = "Loading";
+
+    // Backing field for selectedValues property
+    private IEnumerable<string> _selectedValues = new HashSet<string>();
+
+    // Property to manage selected values with a maximum limit of 7 items
+    private IEnumerable<string> selectedValues
+    {
+        get { return (_selectedValues.Take(7).ToHashSet()); } // Returns only the first 7 selected values
+        set
+        {
+            if (value.Count() > 7) return; // Prevents assigning more than 7 values
+            _selectedValues = value;
+        }
+    }
+
+    // ID of the chart element used in JavaScript interactions
+    string Id = "chart1";
+
+    // Message displayed during loading or error states
+    string LoadingMessage = "Loading...";
+
+    // List of items for chart options
+    private List<string> Items = new();
+
+    // Lifecycle method to initialize the component and prepare chart data
+    protected override async Task OnInitializedAsync()
+    {
+        // Prepare data via the ViewModel
+        await ViewModel.PrepareData();
+
+        // Retrieve chart data from the ViewModel
+        var chartInfo = ViewModel.LoadResult;
+
+        // Skip the first two names (e.g., headers or placeholders) and assign to Items
+        Items = chartInfo.Data.Names.Skip(2).ToList();
+
+        // Configure Snackbar notification positioning
+        Snackbar.Configuration.PositionClass = Defaults.Classes.Position.TopRight;
+
+        // Check if data loading succeeded and update the loading message
+        if (chartInfo.Success)
+        {
+            LoadingMessage = ""; // Clear the loading message
+            Toast(chartInfo.Message); // Display success message
+        }
+        else
+        {
+            LoadingMessage = chartInfo.Message; // Display error message
+        }
+    }
+
+    // Predefined color palette for chart datasets
+    private string[] colorPallete = new[]{
+        "rgba(177, 192, 235, 0.8)", // Lighter blue with transparency
+        "rgba(237, 89, 112, 0.8)", // Lighter red with transparency
+        "rgba(66, 164, 151, 0.8)", // Lighter teal with transparency
+        "rgba(255, 228, 174, 0.8)", // Lighter peach with transparency
+        "rgba(178, 240, 157, 0.8)", // Lighter green with transparency
+        "rgba(133, 163, 213, 0.8)", // Lighter slate blue with transparency
+        "rgba(247, 197, 211, 0.8)"  // Lighter pink with transparency
+    };
+
+    // Updates the chart with selected names and data
+    private async Task UpdateChartAsync()
+    {
+        SelectedNames = _selectedValues.ToArray(); // Convert selected values to an array
+        if (SelectedNames.Length < 1) return; // Exit if no selections are made
+
+        // Build chart data using the ViewModel
+        var chartData = ViewModel.BuildChartData(SelectedNames.ToList());
+
+        // Configure the chart with labels, datasets, and colors
+        var config = new
+        {
+            Type = "line", // Chart type
+            Data = new
+            {
+                Labels = chartData.labels,
+                Datasets = chartData.datasets.Select((ds, i) => new
+                {
+                    Data = ds.data,
+                    Label = ds.label,
+                    BorderColor = colorPallete[i] // Assign a color from the palette
+                }).ToArray()
+            },
+            Labels = SelectedNames
+        };
+
+        // Invoke JavaScript to render the chart
+        await JS.InvokeVoidAsync("setupChart", Id, config);
+        ChartActive = true; // Mark the chart as active
+    }
+
+    // Saves the current chart state as a bookmark
+    private async Task SaveBookmarkAsync()
+    {
+        if (!ChartActive)
+        {
+            Toast("No chart found"); // Notify if no chart is active
+            return;
+        }
+
+        // Retrieve the current chart state via JavaScript
+        var ChartState = await JS.InvokeAsync<ChartState>("saveChartBookmark");
+        ChartState.Selections = SelectedNames; // Add selected names to the chart state
+
+        // Save the chart state via the ViewModel
+        var saveResult = await ViewModel.SaveBookmarkAsync(ChartState);
+        Toast(saveResult.Message); // Notify the user of the save result
+    }
+
+    // Loads a previously saved bookmark
+    public async Task LoadBookmarkAsync()
+    {
+        var loadResult = await ViewModel.LoadBookmarkAsync();
+
+        if (loadResult.Success)
+        {
+            var chartState = loadResult.Data;
+            _selectedValues = chartState.Selections ?? []; // Restore selections
+
+            // Update the chart and restore the viewport
+            await UpdateChartAsync();
+            await JS.InvokeVoidAsync("restoreChartViewport", chartState);
+        }
+
+        Toast(loadResult.Message); // Notify the user of the load result
+    }
+
+    // Saves the chart as an image file
+    private async Task SaveChartAsImageAsync()
+    {
+        if (ChartActive)
+            await JS.InvokeVoidAsync("saveChartAsImage", Id); // Invoke JavaScript to save the chart
+        else
+        {
+            Toast("No chart found"); // Notify if no chart is active
+        }
+    }
+
+    // Resets the chart's zoom level
+    private async Task ResetZoomAsync()
+    {
+        if (ChartActive)
+            await JS.InvokeVoidAsync("resetZoom", Id); // Invoke JavaScript to reset zoom
+        else
+        {
+            Toast("No chart found"); // Notify if no chart is active
+        }
+    }
+
+
+    // Toggles the chart's access to zooming the axis
+    private async Task SetZoomModeAsync()
+    {
+        // Switch between x,y,and xy depending on user selection
+        string access = "";
+        if (ZoomX) access += "x";
+        if (ZoomY) access += "y";
+
+        if (ChartActive)
+            await JS.InvokeVoidAsync("setZoomMode", access); // Invoke JavaScript to toggle zoom type
+        else
+        {
+            Toast("No chart found"); // Notify if no chart is active
+        }
+    }
+
+    // Displays a notification using the Snackbar
+    private void Toast(string Message)
+    {
+        Snackbar.Add(Message, Severity.Normal, config =>
+        {
+            config.ShowCloseIcon = false;
+            config.VisibleStateDuration = 1200; // How long the message is displayed
+            config.HideTransitionDuration = 100; // Transition out time
+            config.ShowTransitionDuration = 700; // Transition in time
+        });
+    }
+}

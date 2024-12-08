@@ -1,0 +1,10 @@
+﻿namespace ChartDemo
+{
+    public partial class MainPage : ContentPage
+    {
+        public MainPage()
+        {
+            InitializeComponent();
+        }
+    }
+}
